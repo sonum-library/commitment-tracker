@@ -8,8 +8,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export type Commitment = {
   id: string
   user_id: string
-  text: string
+  what: string
   due_date: string | null
-  completed_at: string | null
+  status: 'active' | 'paused' | 'archived'
+  pillar: string | null
+  cadence: string | null
   created_at: string
+  updated_at: string
 }

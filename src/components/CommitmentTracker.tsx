@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { supabase, type Commitment } from '../supabase'
+import { supabase } from '../supabase'
+import type { Commitment } from '../supabase'
 import CommitmentItem from './CommitmentItem'
-import AddCommitment from './AddCommitment'
+import { CommitmentWizard } from './CommitmentWizard'
 
 type Props = {
   userId: string
@@ -9,6 +10,8 @@ type Props = {
 
 export default function CommitmentTracker({ userId }: Props) {
   const [commitments, setCommitments] = useState<Commitment[]>([])
+  const [completedToday, setCompletedToday] = useState<Set<string>>(new Set())
+  const [showWizard, setShowWizard] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -16,42 +19,38 @@ export default function CommitmentTracker({ userId }: Props) {
   }, [userId])
 
   async function fetchCommitments() {
-    const { data } = await supabase
-      .from('commitment_tracker_items')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-    if (data) setCommitments(data)
+    const today = new Date().toISOString().slice(0, 10)
+
+    const [{ data: comms }, { data: checkIns }] = await Promise.all([
+      supabase
+        .from('commitments')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('commitment_check_ins')
+        .select('commitment_id')
+        .eq('date', today)
+        .eq('status', 'done'),
+    ])
+
+    if (comms) setCommitments(comms)
+    if (checkIns) setCompletedToday(new Set(checkIns.map((c) => c.commitment_id)))
     setLoading(false)
   }
 
-  async function addCommitment(text: string, dueDate: string | null) {
-    const { data } = await supabase
-      .from('commitment_tracker_items')
-      .insert({ user_id: userId, text, due_date: dueDate })
-      .select()
-      .single()
-    if (data) setCommitments(prev => [...prev, data])
-  }
-
   async function completeCommitment(id: string) {
-    const now = new Date().toISOString()
-    const { data } = await supabase
-      .from('commitment_tracker_items')
-      .update({ completed_at: now })
-      .eq('id', id)
-      .select()
-      .single()
-    if (data) {
-      setCommitments(prev => prev.map(c => c.id === id ? data : c))
-    }
+    const today = new Date().toISOString().slice(0, 10)
+    await supabase.from('commitment_check_ins').upsert(
+      { commitment_id: id, date: today, status: 'done' },
+      { onConflict: 'commitment_id,date' }
+    )
+    setCompletedToday((prev) => new Set([...prev, id]))
   }
 
-  const active = commitments.filter(c => !c.completed_at)
-  const recentlyCompleted = commitments
-    .filter(c => c.completed_at)
-    .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())
-    .slice(0, 10)
+  const active = commitments.filter((c) => !completedToday.has(c.id))
+  const doneToday = commitments.filter((c) => completedToday.has(c.id))
 
   if (loading) {
     return (
@@ -75,7 +74,7 @@ export default function CommitmentTracker({ userId }: Props) {
           </div>
         ) : (
           <ul className="space-y-2">
-            {active.map(commitment => (
+            {active.map((commitment) => (
               <CommitmentItem
                 key={commitment.id}
                 commitment={commitment}
@@ -86,15 +85,20 @@ export default function CommitmentTracker({ userId }: Props) {
         )}
       </section>
 
-      <AddCommitment onAdd={addCommitment} />
+      <button
+        onClick={() => setShowWizard(true)}
+        className="w-full py-3 rounded-2xl border-2 border-dashed border-stone-200 text-stone-400 text-sm hover:border-stone-400 hover:text-stone-600 transition-colors"
+      >
+        + New commitment
+      </button>
 
-      {recentlyCompleted.length > 0 && (
+      {doneToday.length > 0 && (
         <section>
           <h2 className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            Recently completed
+            Completed today
           </h2>
           <ul className="space-y-1">
-            {recentlyCompleted.map(commitment => (
+            {doneToday.map((commitment) => (
               <li
                 key={commitment.id}
                 className="flex items-start gap-3 px-4 py-3 bg-white rounded-xl border border-stone-100 opacity-50"
@@ -104,28 +108,24 @@ export default function CommitmentTracker({ userId }: Props) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-stone-400 line-through">{commitment.text}</p>
-                  {commitment.completed_at && (
-                    <p className="text-xs text-stone-300 mt-0.5">
-                      {formatDate(commitment.completed_at)}
-                    </p>
-                  )}
-                </div>
+                <p className="text-sm text-stone-400 line-through">{commitment.what}</p>
               </li>
             ))}
           </ul>
         </section>
       )}
+
+      {showWizard && (
+        <CommitmentWizard
+          clientId={userId}
+          pillarOptions={['Career', 'Wellbeing', 'Relationships']}
+          onComplete={() => {
+            setShowWizard(false)
+            fetchCommitments()
+          }}
+          onCancel={() => setShowWizard(false)}
+        />
+      )}
     </div>
   )
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
 }

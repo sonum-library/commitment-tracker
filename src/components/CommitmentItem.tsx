@@ -23,7 +23,7 @@ export default function CommitmentItem({ commitment, onComplete }: Props) {
         onClick={handleCheck}
         disabled={checking}
         className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 border-stone-300 hover:border-teal-400 hover:bg-teal-50 transition-colors cursor-pointer flex items-center justify-center disabled:opacity-50"
-        aria-label={`Mark "${commitment.text}" as complete`}
+        aria-label={`Mark "${commitment.what}" as complete`}
       >
         {checking && (
           <div className="w-2.5 h-2.5 rounded-full border border-teal-500 border-t-transparent animate-spin" />
@@ -31,7 +31,7 @@ export default function CommitmentItem({ commitment, onComplete }: Props) {
       </button>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-stone-700 leading-snug">{commitment.text}</p>
+        <p className="text-sm text-stone-700 leading-snug">{commitment.what}</p>
         {commitment.due_date && (
           <p className={`text-xs mt-1 ${isOverdue ? 'text-rose-400' : 'text-stone-400'}`}>
             {isOverdue ? 'Overdue · ' : 'Due '}
